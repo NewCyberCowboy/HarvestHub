@@ -1,0 +1,6 @@
+@HarvestHub_HostAddress = http://localhost:5272
+
+GET {{HarvestHub_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
