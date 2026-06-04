@@ -64,7 +64,16 @@ namespace HarvestHub.Controllers
             try
             {
                 if (!ModelState.IsValid)
-                    return BadRequest(ApiResponse<string>.ErrorResult("Invalid model state"));
+                {
+                    var errors = ModelState
+                        .Where(x => x.Value?.Errors.Count > 0)
+                        .SelectMany(x => x.Value.Errors.Select(e => $"{x.Key}: {e.ErrorMessage}"))
+                        .ToList();
+                    var errorMessage = errors.Any()
+                        ? string.Join("; ", errors)
+                        : "Invalid model state";
+                    return BadRequest(ApiResponse<string>.ErrorResult(errorMessage));
+                }
 
                 var category = await _categoryService.CreateCategoryAsync(createDto);
                 return CreatedAtAction(nameof(GetCategory), new { id = category.CategoryId },
@@ -87,8 +96,23 @@ namespace HarvestHub.Controllers
         {
             try
             {
+                // Логируем входящие данные для отладки
+                _logger.LogInformation("Updating category {CategoryId} with data: Name={Name}, Description={Description}, ParentId={ParentId}",
+                    id, updateDto?.Name, updateDto?.Description, updateDto?.ParentId);
+
                 if (!ModelState.IsValid)
-                    return BadRequest(ApiResponse<string>.ErrorResult("Invalid model state"));
+                {
+                    var errors = ModelState
+                        .Where(x => x.Value?.Errors.Count > 0)
+                        .SelectMany(x => x.Value.Errors.Select(e => $"{x.Key}: {e.ErrorMessage}"))
+                        .ToList();
+                    var errorMessage = errors.Any()
+                        ? string.Join("; ", errors)
+                        : "Invalid model state";
+
+                    _logger.LogWarning("Validation failed for category {CategoryId}: {Errors}", id, errorMessage);
+                    return BadRequest(ApiResponse<string>.ErrorResult(errorMessage));
+                }
 
                 var category = await _categoryService.UpdateCategoryAsync(id, updateDto);
                 return Ok(ApiResponse<CategoryDto>.SuccessResult(category, "Category updated successfully"));

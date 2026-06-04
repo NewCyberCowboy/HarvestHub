@@ -17,11 +17,17 @@ namespace HarvestHub.Models
         public int? BatchId { get; set; }
 
         [Required]
-        public int Quantity { get; set; }
+        public int Quantity { get; set; } // Количество единиц (для обратной совместимости)
+
+        [Column(TypeName = "decimal(18,3)")]
+        public decimal? ExpectedWeight { get; set; } // Ожидаемый вес в кг (от клиента)
+
+        [Column(TypeName = "decimal(18,3)")]
+        public decimal? ActualWeight { get; set; } // Реальный вес в кг (от фермера)
 
         [Required]
         [Column(TypeName = "decimal(18,2)")]
-        public decimal UnitPrice { get; set; }
+        public decimal UnitPrice { get; set; } // Цена за кг
 
         [Required]
         [Column(TypeName = "decimal(18,2)")]

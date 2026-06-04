@@ -26,5 +26,8 @@ namespace HarvestHub.Models
         public ICollection<Review> Reviews { get; set; } = new List<Review>();
         public ICollection<Product> Products { get; set; } = new List<Product>(); // Для фермеров
         public ICollection<Address> Addresses { get; set; } = new List<Address>();
+        public ICollection<Favorite> Favorites { get; set; } = new List<Favorite>();
+        public ICollection<FarmerApplication> FarmerApplications { get; set; } = new List<FarmerApplication>();
+        public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
     }
 }

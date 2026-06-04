@@ -30,7 +30,11 @@ namespace HarvestHub.Repositories.Implementations
             return await _context.Orders
                 .Include(o => o.OrderItems)
                     .ThenInclude(i => i.Product)
+                        .ThenInclude(p => p.Farmer)
+                .Include(o => o.StatusHistory)
                 .Include(o => o.Customer)
+                    .ThenInclude(c => c.Profile)
+                .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
         }
 
@@ -85,6 +89,7 @@ namespace HarvestHub.Repositories.Implementations
                 .Include(o => o.OrderItems)
                     .ThenInclude(i => i.Product)
                 .Include(o => o.StatusHistory)
+                .AsSplitQuery()
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
         }
@@ -95,9 +100,11 @@ namespace HarvestHub.Repositories.Implementations
                 .Where(o => o.OrderItems.Any(i => i.Product.FarmerId == farmerId))
                 .Include(o => o.OrderItems)
                     .ThenInclude(i => i.Product)
+                        .ThenInclude(p => p.Category)
                 .Include(o => o.StatusHistory)
                 .Include(o => o.Customer)
                     .ThenInclude(c => c.Profile)
+                .AsSplitQuery()
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
         }

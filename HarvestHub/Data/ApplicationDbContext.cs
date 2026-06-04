@@ -14,6 +14,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<OrderStatusHistory> OrderStatusHistories { get; set; }
     public DbSet<Review> Reviews { get; set; }
     public DbSet<Address> Addresses { get; set; } = null!;
+    public DbSet<Favorite> Favorites { get; set; } = null!;
+    public DbSet<FarmerApplication> FarmerApplications { get; set; } = null!;
+    public DbSet<ProductDraft> ProductDrafts { get; set; } = null!;
+    public DbSet<Notification> Notifications { get; set; } = null!;
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<OrderStatusHistory>()
@@ -74,6 +78,13 @@ public class ApplicationDbContext : DbContext
             .WithOne(r => r.Customer)
             .HasForeignKey(r => r.CustomerId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // User - Products (один ко многим) - для фермеров
+        modelBuilder.Entity<User>()
+            .HasMany(u => u.Products)
+            .WithOne(p => p.Farmer)
+            .HasForeignKey(p => p.FarmerId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Category - Products (один ко многим)
         modelBuilder.Entity<Category>()
@@ -145,6 +156,25 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(r => r.OrderId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // User - Favorites (один ко многим)
+        modelBuilder.Entity<User>()
+            .HasMany(u => u.Favorites)
+            .WithOne(f => f.User)
+            .HasForeignKey(f => f.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Product - Favorites (один ко многим)
+        modelBuilder.Entity<Product>()
+            .HasMany(p => p.Favorites)
+            .WithOne(f => f.Product)
+            .HasForeignKey(f => f.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Уникальный индекс для избранного (пользователь не может добавить один продукт дважды)
+        modelBuilder.Entity<Favorite>()
+            .HasIndex(f => new { f.UserId, f.ProductId })
+            .IsUnique();
+
         // Уникальные индексы
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Email)
@@ -160,9 +190,97 @@ public class ApplicationDbContext : DbContext
      .HasIndex(pb => pb.BatchNumber)
      .IsUnique();
 
+        // ProductDraft configuration
+        modelBuilder.Entity<ProductDraft>()
+            .HasKey(pd => pd.DraftId);
+
+        modelBuilder.Entity<ProductDraft>()
+            .Property(pd => pd.BasePrice)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<ProductDraft>()
+            .Property(pd => pd.DiscountPrice)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<ProductDraft>()
+            .HasIndex(pd => new { pd.OwnerUserId, pd.LocalDraftId })
+            .IsUnique();
+
+        modelBuilder.Entity<ProductDraft>()
+            .HasIndex(pd => pd.DeviceId);
+
+        modelBuilder.Entity<ProductDraft>()
+            .Property(pd => pd.CreatedAt)
+            .HasDefaultValueSql("NOW()");
+
+        modelBuilder.Entity<ProductDraft>()
+            .Property(pd => pd.UpdatedAt)
+            .HasDefaultValueSql("NOW()");
+
+        // ProductDraft - Owner (User)
+        modelBuilder.Entity<ProductDraft>()
+            .HasOne(pd => pd.Owner)
+            .WithMany()
+            .HasForeignKey(pd => pd.OwnerUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // ProductDraft - Category
+        modelBuilder.Entity<ProductDraft>()
+            .HasOne(pd => pd.Category)
+            .WithMany()
+            .HasForeignKey(pd => pd.CategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         modelBuilder.Entity<Address>()
     .HasIndex(a => new { a.UserId, a.IsDefault })
     .HasFilter("\"IsDefault\" = true");
+
+        // FarmerApplication
+        modelBuilder.Entity<FarmerApplication>()
+            .HasKey(fa => fa.ApplicationId);
+
+        // User - FarmerApplications (один ко многим)
+        modelBuilder.Entity<User>()
+            .HasMany(u => u.FarmerApplications)
+            .WithOne(fa => fa.User)
+            .HasForeignKey(fa => fa.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // FarmerApplication - Reviewer (связь с админом, рассмотревшим заявку)
+        modelBuilder.Entity<FarmerApplication>()
+            .HasOne(fa => fa.Reviewer)
+            .WithMany()
+            .HasForeignKey(fa => fa.ReviewedBy)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Notification configuration
+        modelBuilder.Entity<Notification>()
+            .HasKey(n => n.Id);
+
+        // User - Notifications (один ко многим)
+        modelBuilder.Entity<User>()
+            .HasMany(u => u.Notifications)
+            .WithOne(n => n.User)
+            .HasForeignKey(n => n.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Notification - Order (многие к одному)
+        modelBuilder.Entity<Notification>()
+            .HasOne(n => n.Order)
+            .WithMany()
+            .HasForeignKey(n => n.OrderId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Notification - Product (многие к одному)
+        modelBuilder.Entity<Notification>()
+            .HasOne(n => n.Product)
+            .WithMany()
+            .HasForeignKey(n => n.ProductId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Notification>()
+            .Property(n => n.CreatedAt)
+            .HasDefaultValueSql("NOW()");
 
         // Настройка точности для decimal
         modelBuilder.Entity<Product>()

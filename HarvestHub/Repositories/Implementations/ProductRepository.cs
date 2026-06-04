@@ -18,6 +18,9 @@ namespace HarvestHub.Repositories.Implementations
             return await _context.Products
                 .Include(p => p.Category)
                 .Include(p => p.Farmer)
+                    .ThenInclude(f => f.Profile)
+                .Include(p => p.Farmer)
+                    .ThenInclude(f => f.Addresses)
                 .FirstOrDefaultAsync(p => p.ProductId == id);
         }
 
@@ -26,6 +29,9 @@ namespace HarvestHub.Repositories.Implementations
             return await _context.Products
                 .Include(p => p.Category)
                 .Include(p => p.Farmer)
+                    .ThenInclude(f => f.Profile)
+                .Include(p => p.Farmer)
+                    .ThenInclude(f => f.Addresses)
                 .ToListAsync();
         }
 
@@ -133,6 +139,9 @@ namespace HarvestHub.Repositories.Implementations
                 .Where(p => p.CategoryId.HasValue && idsList.Contains(p.CategoryId.Value))
                 .Include(p => p.Category)
                 .Include(p => p.Farmer)
+                    .ThenInclude(f => f.Profile)
+                .Include(p => p.Farmer)
+                    .ThenInclude(f => f.Addresses)
                 .ToListAsync();
         }
 
@@ -167,6 +176,10 @@ namespace HarvestHub.Repositories.Implementations
             return await _context.Products
                 .Where(p => p.FarmerId == farmerId)
                 .Include(p => p.Category)
+                .Include(p => p.Farmer)
+                    .ThenInclude(f => f.Profile)
+                .Include(p => p.Farmer)
+                    .ThenInclude(f => f.Addresses)
                 .ToListAsync();
         }
         public async Task<int> GetCountByFarmerIdAsync(int farmerId)

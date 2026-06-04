@@ -17,11 +17,23 @@ namespace HarvestHub.Models
 
         [Required]
         [Column(TypeName = "decimal(18,2)")]
-        public decimal TotalAmount { get; set; }
+        public decimal TotalAmount { get; set; } // Итоговая сумма (товары + доставка)
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ProductsAmount { get; set; } // Сумма товаров
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal DeliveryAmount { get; set; } // Сумма доставки
 
         [Required]
         [MaxLength(20)]
-        public string Status { get; set; } = "Pending";
+        public string Status { get; set; } = "Pending"; // Pending -> AwaitingWeight -> ReadyToShip -> Shipped -> Delivered
+
+        [MaxLength(100)]
+        public string? CustomerCity { get; set; } // Город клиента для расчета доставки
+
+        [MaxLength(100)]
+        public string? FarmerCity { get; set; } // Город фермера для расчета доставки
 
         [MaxLength(20)]
         public string PaymentStatus { get; set; } = "Pending"; // Добавим

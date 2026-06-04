@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
 
 namespace HarvestHub.DTOs
 {
@@ -16,7 +17,14 @@ namespace HarvestHub.DTOs
         [Range(0, int.MaxValue)]
         public int? CurrentStock { get; set; }
 
-        public string Status { get; set; }
+        [MaxLength(20)]
+        public string? Unit { get; set; } // Единица измерения
+
+        public List<decimal>? WeightOptions { get; set; } // Варианты веса
+
+        public bool? AllowCustomWeight { get; set; } // Разрешить произвольный вес
+
+        public string? Status { get; set; }
         public DateTime? HarvestDate { get; set; }
         public DateTime? ExpiryDate { get; set; }
 
@@ -24,5 +32,8 @@ namespace HarvestHub.DTOs
         public string StorageConditions { get; set; }
 
         public int? CategoryId { get; set; }
+
+        [MaxLength(1000000)]
+        public string? ImageUrl { get; set; }
     }
 }

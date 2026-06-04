@@ -324,19 +324,54 @@ namespace HarvestHub.Services.Implementations
 
         private ProductDto MapToProductDto(Product product)
         {
+            string farmerName = "Unknown Farmer";
+            string? farmerAddress = null;
+
+            if (product.Farmer?.Profile != null)
+            {
+                var firstName = product.Farmer.Profile.FirstName ?? "";
+                var lastName = product.Farmer.Profile.LastName ?? "";
+                farmerName = $"{firstName} {lastName}".Trim();
+                if (string.IsNullOrEmpty(farmerName))
+                    farmerName = "Unknown Farmer";
+                farmerAddress = product.Farmer.Profile.Address;
+            }
+
+            // Парсим WeightOptions из JSON
+            List<decimal>? weightOptions = null;
+            if (!string.IsNullOrWhiteSpace(product.WeightOptions))
+            {
+                try
+                {
+                    weightOptions = System.Text.Json.JsonSerializer.Deserialize<List<decimal>>(product.WeightOptions);
+                }
+                catch
+                {
+                    weightOptions = null;
+                }
+            }
+
             return new ProductDto
             {
                 ProductId = product.ProductId,
                 Name = product.Name,
                 Description = product.Description,
-                BasePrice = product.BasePrice, 
+                BasePrice = product.BasePrice,
                 CurrentStock = product.CurrentStock,
+                Unit = product.Unit ?? "кг",
+                WeightOptions = weightOptions,
+                AllowCustomWeight = product.AllowCustomWeight,
                 CategoryId = product.CategoryId ?? 0,
                 CategoryName = product.Category?.Name,
                 Status = product.Status,
                 HarvestDate = product.HarvestDate,
                 ExpiryDate = product.ExpiryDate,
-                StorageConditions = product.StorageConditions
+                StorageConditions = product.StorageConditions,
+                CreatedAt = product.CreatedAt,
+                FarmerId = product.FarmerId,
+                FarmerName = farmerName,
+                FarmerAddress = farmerAddress,
+                ImageUrl = product.ImageUrl
             };
         }
     }

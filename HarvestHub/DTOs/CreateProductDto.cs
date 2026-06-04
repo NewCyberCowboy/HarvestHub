@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
 
 namespace HarvestHub.DTOs
 {
@@ -12,21 +13,27 @@ namespace HarvestHub.DTOs
         public string Description { get; set; }
 
         [Range(0.01, 100000)]
-        public decimal BasePrice { get; set; }
+        public decimal BasePrice { get; set; } // Цена за кг
 
         [Range(0, int.MaxValue)]
-        public int CurrentStock { get; set; }
+        public int CurrentStock { get; set; } // Количество в наличии (в кг)
 
-        [Required]
-        public string Status { get; set; }
+        [MaxLength(20)]
+        public string Unit { get; set; } = "кг"; // Единица измерения (по умолчанию кг)
+
+        public List<decimal>? WeightOptions { get; set; } // Варианты веса: [0.5, 1, 1.5, 2, ... 20]
+
+        public bool AllowCustomWeight { get; set; } = true; // Разрешить произвольный вес
 
         public DateTime? HarvestDate { get; set; }
         public DateTime? ExpiryDate { get; set; }
 
         [StringLength(500)]
-        public string StorageConditions { get; set; }
+        public string? StorageConditions { get; set; }
 
-        [Required]
-        public int CategoryId { get; set; }
+        public int? CategoryId { get; set; }
+
+        [MaxLength(1000000)]
+        public string? ImageUrl { get; set; }
     }
 }

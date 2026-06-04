@@ -3,6 +3,9 @@ using HarvestHub.DTOs;
 using HarvestHub.Repositories.Interfaces;
 using HarvestHub.Services.Interfaces;
 using HarvestHub.Exceptions;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace HarvestHub.Services.Implementations
 {
@@ -43,37 +46,118 @@ namespace HarvestHub.Services.Implementations
         // Обновленный метод с farmerId
         public async Task<ProductDto> CreateProductAsync(CreateProductDto createDto, int farmerId)
         {
-            // Валидация категории
-            if (createDto.CategoryId.HasValue &&
-                !await _categoryRepository.ExistsAsync(createDto.CategoryId.Value))
+            // Валидация категории (если указана)
+            if (createDto.CategoryId.HasValue)
             {
-                throw new BusinessException($"Category with ID {createDto.CategoryId} not found");
+                if (!await _categoryRepository.ExistsAsync(createDto.CategoryId.Value))
+                {
+                    throw new BusinessException($"Category with ID {createDto.CategoryId} not found");
+                }
             }
 
             // Валидация уникальности имени
+            if (string.IsNullOrWhiteSpace(createDto.Name))
+            {
+                throw new BusinessException("Product name is required");
+            }
+
             if (await _productRepository.ExistsByNameAsync(createDto.Name))
                 throw new BusinessException($"Product with name '{createDto.Name}' already exists");
 
-            var product = new Product
+            // Валидация цены
+            if (createDto.BasePrice <= 0)
             {
-                Name = createDto.Name,
-                Description = createDto.Description,
-                BasePrice = createDto.BasePrice,
-                CurrentStock = createDto.CurrentStock,
-                FarmerId = farmerId,
-                CategoryId = createDto.CategoryId,
-                Status = "Available",
-                HarvestDate = createDto.HarvestDate,
-                ExpiryDate = createDto.ExpiryDate,
-                StorageConditions = createDto.StorageConditions,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
+                throw new BusinessException("Product price must be greater than 0");
+            }
 
-            var created = await _productRepository.AddAsync(product);
-            _logger.LogInformation("Product created: {ProductId}, {ProductName}", created.ProductId, created.Name);
+            // Проверка существования фермера
+            var farmer = await _userRepository.GetByIdAsync(farmerId);
+            if (farmer == null)
+            {
+                throw new NotFoundException($"Farmer with ID {farmerId} not found");
+            }
 
-            return MapToProductDto(created);
+            try
+            {
+                // Конвертируем даты в UTC, если они указаны
+                DateTime? harvestDateUtc = null;
+                if (createDto.HarvestDate.HasValue)
+                {
+                    var harvestDate = createDto.HarvestDate.Value;
+                    harvestDateUtc = harvestDate.Kind == DateTimeKind.Unspecified 
+                        ? DateTime.SpecifyKind(harvestDate, DateTimeKind.Utc) 
+                        : harvestDate.ToUniversalTime();
+                }
+
+                DateTime? expiryDateUtc = null;
+                if (createDto.ExpiryDate.HasValue)
+                {
+                    var expiryDate = createDto.ExpiryDate.Value;
+                    expiryDateUtc = expiryDate.Kind == DateTimeKind.Unspecified 
+                        ? DateTime.SpecifyKind(expiryDate, DateTimeKind.Utc) 
+                        : expiryDate.ToUniversalTime();
+                }
+
+                // Конвертируем WeightOptions из List<decimal> в JSON строку
+                string? weightOptionsJson = null;
+                if (createDto.WeightOptions != null && createDto.WeightOptions.Any())
+                {
+                    weightOptionsJson = System.Text.Json.JsonSerializer.Serialize(createDto.WeightOptions);
+                }
+
+                var product = new Product
+                {
+                    Name = createDto.Name.Trim(),
+                    Description = string.IsNullOrWhiteSpace(createDto.Description) ? null : createDto.Description.Trim(),
+                    BasePrice = createDto.BasePrice, // Цена за кг
+                    CurrentStock = createDto.CurrentStock, // Количество в наличии (в кг)
+                    Unit = GetValidUnit(createDto.Unit), // Заменяем "шт" и "коробка" на "кг"
+                    WeightOptions = weightOptionsJson,
+                    AllowCustomWeight = createDto.AllowCustomWeight,
+                    FarmerId = farmerId, // Устанавливаем только ID, не навигационное свойство
+                    CategoryId = createDto.CategoryId, // Может быть null
+                    Status = "Available", // Статус всегда устанавливается автоматически
+                    HarvestDate = harvestDateUtc,
+                    ExpiryDate = expiryDateUtc,
+                    StorageConditions = string.IsNullOrWhiteSpace(createDto.StorageConditions) ? null : createDto.StorageConditions.Trim(),
+                    ImageUrl = string.IsNullOrWhiteSpace(createDto.ImageUrl) ? null : createDto.ImageUrl.Trim(),
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                    // НЕ устанавливаем навигационные свойства Farmer и Category - EF сделает это автоматически
+                };
+
+                _logger.LogInformation("Attempting to create product: Name={Name}, FarmerId={FarmerId}, CategoryId={CategoryId}, BasePrice={BasePrice}, CurrentStock={CurrentStock}", 
+                    product.Name, farmerId, createDto.CategoryId, product.BasePrice, product.CurrentStock);
+
+                var created = await _productRepository.AddAsync(product);
+                _logger.LogInformation("Product created successfully: {ProductId}, {ProductName} by Farmer {FarmerId}", 
+                    created.ProductId, created.Name, farmerId);
+
+                return MapToProductDto(created);
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateException dbEx)
+            {
+                _logger.LogError(dbEx, "Database error creating product: Name={Name}, FarmerId={FarmerId}, InnerException={InnerException}", 
+                    createDto.Name, farmerId, dbEx.InnerException?.Message);
+                
+                // Проверяем внутреннее исключение для более детальной информации
+                if (dbEx.InnerException != null)
+                {
+                    var innerMessage = dbEx.InnerException.Message;
+                    if (innerMessage.Contains("foreign key") || innerMessage.Contains("FOREIGN KEY"))
+                    {
+                        throw new BusinessException("Ошибка при создании продукта: проверьте, что фермер и категория существуют");
+                    }
+                    throw new BusinessException($"Ошибка базы данных: {innerMessage}");
+                }
+                throw new BusinessException($"Ошибка при сохранении продукта: {dbEx.Message}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating product: Name={Name}, FarmerId={FarmerId}, Error={ErrorMessage}, StackTrace={StackTrace}", 
+                    createDto.Name, farmerId, ex.Message, ex.StackTrace);
+                throw;
+            }
         }
 
         // Старый метод для обратной совместимости (можно удалить если не используется)
@@ -111,6 +195,21 @@ namespace HarvestHub.Services.Implementations
             if (updateDto.CurrentStock.HasValue)
                 product.CurrentStock = updateDto.CurrentStock.Value;
 
+            if (updateDto.Unit != null)
+                product.Unit = GetValidUnit(updateDto.Unit);
+
+            // Обновляем WeightOptions если указаны
+            if (updateDto.WeightOptions != null)
+            {
+                product.WeightOptions = System.Text.Json.JsonSerializer.Serialize(updateDto.WeightOptions);
+            }
+
+            // Обновляем AllowCustomWeight если указано
+            if (updateDto.AllowCustomWeight.HasValue)
+            {
+                product.AllowCustomWeight = updateDto.AllowCustomWeight.Value;
+            }
+
             if (updateDto.CategoryId.HasValue)
             {
                 if (!await _categoryRepository.ExistsAsync(updateDto.CategoryId.Value))
@@ -122,13 +221,26 @@ namespace HarvestHub.Services.Implementations
                 product.Status = updateDto.Status;
 
             if (updateDto.HarvestDate.HasValue)
-                product.HarvestDate = updateDto.HarvestDate;
+            {
+                var harvestDate = updateDto.HarvestDate.Value;
+                product.HarvestDate = harvestDate.Kind == DateTimeKind.Unspecified 
+                    ? DateTime.SpecifyKind(harvestDate, DateTimeKind.Utc) 
+                    : harvestDate.ToUniversalTime();
+            }
 
             if (updateDto.ExpiryDate.HasValue)
-                product.ExpiryDate = updateDto.ExpiryDate;
+            {
+                var expiryDate = updateDto.ExpiryDate.Value;
+                product.ExpiryDate = expiryDate.Kind == DateTimeKind.Unspecified 
+                    ? DateTime.SpecifyKind(expiryDate, DateTimeKind.Utc) 
+                    : expiryDate.ToUniversalTime();
+            }
 
             if (!string.IsNullOrEmpty(updateDto.StorageConditions))
                 product.StorageConditions = updateDto.StorageConditions;
+
+            if (updateDto.ImageUrl != null)
+                product.ImageUrl = string.IsNullOrWhiteSpace(updateDto.ImageUrl) ? null : updateDto.ImageUrl.Trim();
 
             product.UpdatedAt = DateTime.UtcNow;
 
@@ -202,6 +314,7 @@ namespace HarvestHub.Services.Implementations
         private ProductDto MapToProductDto(Product product)
         {
             string farmerName = "Unknown Farmer";
+            string? farmerAddress = null;
 
             if (product.Farmer?.Profile != null)
             {
@@ -212,13 +325,50 @@ namespace HarvestHub.Services.Implementations
                     farmerName = "Unknown Farmer";
             }
 
+            // Получаем адрес фермера (первый адрес по умолчанию или из Profile)
+            if (product.Farmer != null)
+            {
+                // Сначала пробуем получить из Addresses
+                if (product.Farmer.Addresses != null && product.Farmer.Addresses.Any())
+                {
+                    var defaultAddress = product.Farmer.Addresses.FirstOrDefault(a => a.IsDefault) 
+                        ?? product.Farmer.Addresses.First();
+                    if (defaultAddress != null)
+                    {
+                        farmerAddress = $"{defaultAddress.Street}, {defaultAddress.City}, {defaultAddress.PostalCode}";
+                    }
+                }
+                // Если нет адресов, пробуем получить из Profile
+                else if (product.Farmer.Profile?.Address != null)
+                {
+                    farmerAddress = product.Farmer.Profile.Address;
+                }
+            }
+
+            // Конвертируем WeightOptions из JSON строки в List<decimal>
+            List<decimal>? weightOptions = null;
+            if (!string.IsNullOrWhiteSpace(product.WeightOptions))
+            {
+                try
+                {
+                    weightOptions = System.Text.Json.JsonSerializer.Deserialize<List<decimal>>(product.WeightOptions);
+                }
+                catch
+                {
+                    // Если не удалось распарсить, оставляем null
+                }
+            }
+
             return new ProductDto
             {
                 ProductId = product.ProductId,
                 Name = product.Name,
                 Description = product.Description,
-                BasePrice = product.BasePrice,
-                CurrentStock = product.CurrentStock,
+                BasePrice = product.BasePrice, // Цена за кг
+                CurrentStock = product.CurrentStock, // Количество в наличии (в кг)
+                Unit = GetValidUnit(product.Unit),
+                WeightOptions = weightOptions,
+                AllowCustomWeight = product.AllowCustomWeight,
                 CategoryId = product.CategoryId ?? 0,
                 CategoryName = product.Category?.Name,
                 Status = product.Status,
@@ -226,8 +376,26 @@ namespace HarvestHub.Services.Implementations
                 ExpiryDate = product.ExpiryDate,
                 StorageConditions = product.StorageConditions,
                 CreatedAt = product.CreatedAt,
-                FarmerName = farmerName // Добавляем имя фермера
+                FarmerId = product.FarmerId,
+                FarmerName = farmerName,
+                FarmerAddress = farmerAddress,
+                ImageUrl = product.ImageUrl
             };
         }
+
+        // Вспомогательный метод для валидации единицы измерения
+        private string GetValidUnit(string? unit)
+        {
+            if (string.IsNullOrWhiteSpace(unit))
+                return "кг";
+            
+            var trimmedUnit = unit.Trim();
+            
+            // Заменяем недопустимые единицы на "кг"
+            if (trimmedUnit == "шт" || trimmedUnit == "коробка" || trimmedUnit == "коробки")
+                return "кг";
+            
+            return trimmedUnit;
+        }
     }
-    }
+}
